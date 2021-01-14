@@ -26,6 +26,7 @@ import (
 	gtypes "github.com/onsi/gomega/types"
 	machineproviderv1 "github.com/openshift/cluster-api-provider-equinix-metal/pkg/apis/equinixmetal/v1beta1"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	"github.com/packethost/packngo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -36,23 +37,19 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/manager"
 )
 
-// A mock giving some machine type options for testing
-// var mockMachineTypesFunc = func(_ string, _ string, machineType string) (*compute.MachineType, error) {
-// 	switch machineType {
-// 	case "n1-standard-2":
-// 		return &compute.MachineType{
-// 			GuestCpus: 2,
-// 			MemoryMb:  7680,
-// 		}, nil
-// 	case "n2-highcpu-16":
-// 		return &compute.MachineType{
-// 			GuestCpus: 16,
-// 			MemoryMb:  16384,
-// 		}, nil
-// 	default:
-// 		return nil, fmt.Errorf("unknown machineType: %s", machineType)
-// 	}
-// }
+type fakePlanService struct {
+	plans []packngo.Plan
+}
+
+func (f *fakePlanService) getter() PlanServiceGetter {
+	return func(name, apiKey string) packngo.PlanService {
+		return f
+	}
+}
+
+func (f *fakePlanService) List(opts *packngo.ListOptions) ([]packngo.Plan, *packngo.Response, error) {
+	return f.plans, nil, nil
+}
 
 var _ = Describe("Reconciler", func() {
 	var c client.Client
@@ -64,16 +61,45 @@ var _ = Describe("Reconciler", func() {
 		mgr, err := manager.New(cfg, manager.Options{MetricsBindAddress: "0"})
 		Expect(err).ToNot(HaveOccurred())
 
-		// _, service := computeservice.NewComputeServiceMock()
-		// service.MockMachineTypesGet = mockMachineTypesFunc
+		fakePlanService := fakePlanService{
+			plans: []packngo.Plan{
+				{
+					ID:   "test",
+					Slug: "c3.small.x86",
+					Specs: &packngo.Specs{
+						Cpus: []*packngo.Cpus{
+							{
+								Count: 1,
+								Type:  "Intel(R) Xeon(R) E-2278G CPU @ 3.40GHz",
+							},
+						},
+						Memory: &packngo.Memory{
+							Total: "32GB",
+						},
+					},
+				},
+				{
+					ID:   "test",
+					Slug: "m2.xlarge.x86",
+					Specs: &packngo.Specs{
+						Cpus: []*packngo.Cpus{
+							{
+								Count: 2,
+								Type:  "Intel Scalable Gold 5120 28-Core Processor @ 2.2GHz",
+							},
+						},
+						Memory: &packngo.Memory{
+							Total: "384GB",
+						},
+					},
+				},
+			},
+		}
 
 		r := Reconciler{
-			Client: mgr.GetClient(),
-			Log:    log.Log,
-
-			// getGCPService: func(_ string, _ machineproviderv1.EquinixMetalMachineProviderSpec) (computeservice.GCPComputeService, error) {
-			// 	return service, nil
-			// },
+			Client:            mgr.GetClient(),
+			Log:               log.Log,
+			PlanServiceGetter: fakePlanService.getter(),
 		}
 		Expect(r.SetupWithManager(mgr, controller.Options{})).To(Succeed())
 
@@ -136,26 +162,26 @@ var _ = Describe("Reconciler", func() {
 			expectedAnnotations: make(map[string]string),
 			expectedEvents:      []string{"ReconcileError"},
 		}),
-		Entry("with a n1-standard-2", reconcileTestCase{
-			machineType:         "n1-standard-2",
+		Entry("with a c3.small", reconcileTestCase{
+			machineType:         "c3.small",
 			existingAnnotations: make(map[string]string),
 			expectedAnnotations: map[string]string{
-				cpuKey:    "2",
-				memoryKey: "7680",
+				cpuKey:    "1",
+				memoryKey: "32000",
 			},
 			expectedEvents: []string{},
 		}),
-		Entry("with a n2-highcpu-16", reconcileTestCase{
-			machineType:         "n2-highcpu-16",
+		Entry("with a m2.xlarge", reconcileTestCase{
+			machineType:         "m2.xlarge",
 			existingAnnotations: make(map[string]string),
 			expectedAnnotations: map[string]string{
-				cpuKey:    "16",
-				memoryKey: "16384",
+				cpuKey:    "2",
+				memoryKey: "384000",
 			},
 			expectedEvents: []string{},
 		}),
 		Entry("with existing annotations", reconcileTestCase{
-			machineType: "n1-standard-2",
+			machineType: "c3.small",
 			existingAnnotations: map[string]string{
 				"existing": "annotation",
 				"annother": "existingAnnotation",
@@ -163,13 +189,13 @@ var _ = Describe("Reconciler", func() {
 			expectedAnnotations: map[string]string{
 				"existing": "annotation",
 				"annother": "existingAnnotation",
-				cpuKey:     "2",
-				memoryKey:  "7680",
+				cpuKey:     "1",
+				memoryKey:  "32000",
 			},
 			expectedEvents: []string{},
 		}),
 		Entry("with an invalid machineType", reconcileTestCase{
-			machineType: "r4.xLarge",
+			machineType: "r4.notFound",
 			existingAnnotations: map[string]string{
 				"existing": "annotation",
 				"annother": "existingAnnotation",
@@ -219,6 +245,7 @@ func TestReconcile(t *testing.T) {
 	testCases := []struct {
 		name                string
 		machineType         string
+		plans               []packngo.Plan
 		existingAnnotations map[string]string
 		expectedAnnotations map[string]string
 		expectErr           bool
@@ -226,39 +253,90 @@ func TestReconcile(t *testing.T) {
 		{
 			name:        "with no machineType set",
 			machineType: "",
-			// mockMachineTypesGet: func(_ string, _ string, _ string) (*compute.MachineType, error) {
-			// 	return nil, errors.New("machineType should not be empty")
-			// },
+			plans: []packngo.Plan{
+				{
+					ID:   "test",
+					Slug: "c3.large.x86",
+				},
+			},
 			existingAnnotations: make(map[string]string),
 			expectedAnnotations: make(map[string]string),
 			expectErr:           true,
 		},
 		{
-			name:        "with a n1-standard-2",
-			machineType: "n1-standard-2",
-			// mockMachineTypesGet: mockMachineTypesFunc,
+			name:        "with a c3.small",
+			machineType: "c3.small",
+			plans: []packngo.Plan{
+				{
+					ID:   "test",
+					Slug: "c3.small.x86",
+					Specs: &packngo.Specs{
+						Cpus: []*packngo.Cpus{
+							{
+								Count: 1,
+								Type:  "Intel(R) Xeon(R) E-2278G CPU @ 3.40GHz",
+							},
+						},
+						Memory: &packngo.Memory{
+							Total: "32GB",
+						},
+					},
+				},
+			},
 			existingAnnotations: make(map[string]string),
 			expectedAnnotations: map[string]string{
-				cpuKey:    "2",
-				memoryKey: "7680",
+				cpuKey:    "1",
+				memoryKey: "32000",
 			},
 			expectErr: false,
 		},
 		{
-			name:        "with a n2-highcpu-16",
-			machineType: "n2-highcpu-16",
-			// mockMachineTypesGet: mockMachineTypesFunc,
+			name:        "with a m2.xlarge",
+			machineType: "m2.xlarge",
+			plans: []packngo.Plan{
+				{
+					ID:   "test",
+					Slug: "m2.xlarge.x86",
+					Specs: &packngo.Specs{
+						Cpus: []*packngo.Cpus{
+							{
+								Count: 2,
+								Type:  "Intel Scalable Gold 5120 28-Core Processor @ 2.2GHz",
+							},
+						},
+						Memory: &packngo.Memory{
+							Total: "384GB",
+						},
+					},
+				},
+			},
 			existingAnnotations: make(map[string]string),
 			expectedAnnotations: map[string]string{
-				cpuKey:    "16",
-				memoryKey: "16384",
+				cpuKey:    "2",
+				memoryKey: "384000",
 			},
 			expectErr: false,
 		},
 		{
 			name:        "with existing annotations",
-			machineType: "n1-standard-2",
-			// mockMachineTypesGet: mockMachineTypesFunc,
+			machineType: "c3.small",
+			plans: []packngo.Plan{
+				{
+					ID:   "test",
+					Slug: "c3.small.x86",
+					Specs: &packngo.Specs{
+						Cpus: []*packngo.Cpus{
+							{
+								Count: 1,
+								Type:  "Intel(R) Xeon(R) E-2278G CPU @ 3.40GHz",
+							},
+						},
+						Memory: &packngo.Memory{
+							Total: "32GB",
+						},
+					},
+				},
+			},
 			existingAnnotations: map[string]string{
 				"existing": "annotation",
 				"annother": "existingAnnotation",
@@ -266,15 +344,15 @@ func TestReconcile(t *testing.T) {
 			expectedAnnotations: map[string]string{
 				"existing": "annotation",
 				"annother": "existingAnnotation",
-				cpuKey:     "2",
-				memoryKey:  "7680",
+				cpuKey:     "1",
+				memoryKey:  "32000",
 			},
 			expectErr: false,
 		},
 		{
 			name:        "with an invalid machineType",
-			machineType: "r4.xLarge",
-			// mockMachineTypesGet: mockMachineTypesFunc,
+			machineType: "r4.notFound",
+			plans:       []packngo.Plan{},
 			existingAnnotations: map[string]string{
 				"existing": "annotation",
 				"annother": "existingAnnotation",
@@ -287,20 +365,17 @@ func TestReconcile(t *testing.T) {
 		},
 	}
 
-	for _, tc := range testCases {
+	for i := range testCases {
+		tc := testCases[i]
 		t.Run(tc.name, func(tt *testing.T) {
 			g := NewWithT(tt)
 
-			// _, service := computeservice.NewComputeServiceMock()
-			// if tc.mockMachineTypesGet != nil {
-			// 	service.MockMachineTypesGet = tc.mockMachineTypesGet
-			// }
+			fakePlanService := fakePlanService{
+				plans: tc.plans,
+			}
 
 			r := &Reconciler{
-				// cache: newMachineTypesCache(),
-				// getGCPService: func(_ string, _ machineproviderv1.EquinixMetalMachineProviderSpec) (computeservice.GCPComputeService, error) {
-				// 	return service, nil
-				// },
+				PlanServiceGetter: fakePlanService.getter(),
 			}
 
 			machineSet, err := newTestMachineSet("default", tc.machineType, tc.existingAnnotations)

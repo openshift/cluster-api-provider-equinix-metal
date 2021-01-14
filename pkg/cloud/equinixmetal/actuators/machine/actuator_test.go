@@ -10,6 +10,7 @@ import (
 	. "github.com/onsi/gomega"
 	"github.com/openshift/cluster-api-provider-equinix-metal/pkg/apis/equinixmetal/v1beta1"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	"github.com/packethost/packngo"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -31,6 +32,66 @@ var (
 func init() {
 	// Add types to scheme
 	machinev1.AddToScheme(scheme.Scheme)
+}
+
+type fakeDeviceService struct {
+	devices []packngo.Device
+}
+
+func (f *fakeDeviceService) getter() DeviceServiceGetter {
+	return func(name, apiKey string) packngo.DeviceService {
+		return f
+	}
+}
+
+func (f *fakeDeviceService) List(projectId string, opts *packngo.ListOptions) ([]packngo.Device, *packngo.Response, error) {
+	return f.devices, nil, nil
+}
+
+func (f *fakeDeviceService) Create(*packngo.DeviceCreateRequest) (*packngo.Device, *packngo.Response, error) {
+	return nil, nil, fmt.Errorf("Not implemented yet")
+}
+
+func (f *fakeDeviceService) Get(id string, opts *packngo.GetOptions) (*packngo.Device, *packngo.Response, error) {
+	for _, d := range f.devices {
+		if d.ID == id {
+			return &d, nil, nil
+		}
+	}
+
+	return nil, nil, fmt.Errorf("Not Found")
+}
+
+func (f *fakeDeviceService) Update(string, *packngo.DeviceUpdateRequest) (*packngo.Device, *packngo.Response, error) {
+	return nil, nil, fmt.Errorf("Not implemented yet")
+}
+
+func (f *fakeDeviceService) Delete(string, bool) (*packngo.Response, error) {
+	return nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) Reboot(string) (*packngo.Response, error) {
+	return nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) PowerOff(string) (*packngo.Response, error) {
+	return nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) PowerOn(string) (*packngo.Response, error) {
+	return nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) Lock(string) (*packngo.Response, error) {
+	return nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) Unlock(string) (*packngo.Response, error) {
+	return nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) ListBGPSessions(deviceID string, opts *packngo.ListOptions) ([]packngo.BGPSession, *packngo.Response, error) {
+	return nil, nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) ListBGPNeighbors(deviceID string, opts *packngo.ListOptions) ([]packngo.BGPNeighbor, *packngo.Response, error) {
+	return nil, nil, fmt.Errorf("Not implemented yet")
+}
+func (f *fakeDeviceService) ListEvents(deviceID string, opts *packngo.ListOptions) ([]packngo.Event, *packngo.Response, error) {
+	return nil, nil, fmt.Errorf("Not implemented yet")
 }
 
 func TestActuatorEvents(t *testing.T) {
@@ -241,10 +302,12 @@ func TestActuatorEvents(t *testing.T) {
 			}
 			gs.Eventually(getMachine, timeout).Should(Succeed())
 
+			fakeDeviceService := fakeDeviceService{}
+
 			params := ActuatorParams{
-				CoreClient:    k8sClient,
-				EventRecorder: eventRecorder,
-				// ComputeClientBuilder: computeservice.MockBuilderFuncType,
+				CoreClient:          k8sClient,
+				EventRecorder:       eventRecorder,
+				DeviceServiceGetter: fakeDeviceService.getter(),
 			}
 
 			actuator := NewActuator(params)
@@ -343,9 +406,11 @@ func TestActuatorExists(t *testing.T) {
 				}
 			}
 
+			fakeDeviceService := fakeDeviceService{}
+
 			params := ActuatorParams{
-				CoreClient: controllerfake.NewFakeClient(userDataSecret, credentialsSecret),
-				// ComputeClientBuilder: computeservice.MockBuilderFuncType,
+				CoreClient:          controllerfake.NewFakeClient(userDataSecret, credentialsSecret),
+				DeviceServiceGetter: fakeDeviceService.getter(),
 			}
 
 			actuator := NewActuator(params)

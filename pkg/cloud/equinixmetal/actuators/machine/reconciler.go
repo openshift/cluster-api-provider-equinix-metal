@@ -19,7 +19,6 @@ import (
 const (
 	userDataSecretKey   = "userData"
 	requeueAfterSeconds = 20
-	clientName          = "OpenShift-Provider-v1beta1"
 )
 
 // Reconciler are list of services required by machine actuator, easy to create a fake.
@@ -61,9 +60,9 @@ func (r *Reconciler) create() error {
 		Tags:          r.providerSpec.Tags,
 	}
 
-	emClient := packngo.NewClientWithAuth(clientName, r.apiKey, nil)
+	deviceService := r.deviceServiceGetter(clientName, r.apiKey)
 
-	if _, _, err := emClient.Devices.Create(req); err != nil {
+	if _, _, err := deviceService.Create(req); err != nil {
 		if reconcileWithCloudError := r.reconcileMachineWithCloudState(&v1beta1.EquinixMetalMachineProviderCondition{
 			Type:    v1beta1.MachineCreated,
 			Reason:  machineCreationFailedReason,
@@ -209,9 +208,9 @@ func (r *Reconciler) getDevice() (*packngo.Device, error) {
 
 	var device *packngo.Device
 
-	emClient := packngo.NewClientWithAuth(clientName, r.apiKey, nil)
+	deviceService := r.deviceServiceGetter(clientName, r.apiKey)
 
-	devices, _, err := emClient.Devices.List(r.projectID, nil)
+	devices, _, err := deviceService.List(r.projectID, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list devices via device service: %v", err)
 	}
@@ -240,9 +239,9 @@ func (r *Reconciler) delete() error {
 		return nil
 	}
 
-	emClient := packngo.NewClientWithAuth(clientName, r.apiKey, nil)
+	deviceService := r.deviceServiceGetter(clientName, r.apiKey)
 
-	if _, err := emClient.Devices.Delete(device.ID, false); err != nil {
+	if _, err := deviceService.Delete(device.ID, false); err != nil {
 		metrics.RegisterFailedInstanceDelete(&metrics.MachineLabels{
 			Name:      r.machine.Name,
 			Namespace: r.machine.Namespace,

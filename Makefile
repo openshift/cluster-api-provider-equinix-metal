@@ -21,7 +21,7 @@ ifeq ($(NO_DOCKER), 1)
   IMAGE_BUILD_CMD = imagebuilder
   CGO_ENABLED = 1
 else
-  DOCKER_CMD := docker run --rm -e CGO_ENABLED=1 -v "$(PWD)":/go/src/github.com/openshift/cluster-api-provider-equinix-metal:Z -w /go/src/openshift/cluster-api-provider-equinix-metal openshift/origin-release:golang-1.15
+  DOCKER_CMD := docker run --rm -e CGO_ENABLED=1 -v "$(PWD)":/go/src/$(REPO_PATH):Z -w /go/src/$(REPO_PATH) openshift/origin-release:golang-1.15
   IMAGE_BUILD_CMD = docker build
 endif
 
@@ -53,11 +53,11 @@ vet: ## Apply go vet to all go files
 .PHONY: test
 test: ## Run tests
 	@echo -e "\033[32mTesting...\033[0m"
-	$(DOCKER_CMD) $(REPO_PATH)/hack/ci-test.sh
+	$(DOCKER_CMD) hack/ci-test.sh
 
 .PHONY: unit
 unit: # Run unit test
-	$(DOCKER_CMD) go test -race -cover "$(REPO_PATH)/cmd/..." "$(REPO_PATH)/pkg/..."
+	$(DOCKER_CMD) go test -race -cover ./cmd/... ./pkg/...
 
 .PHONY: sec
 sec: # Run security static analysis
@@ -66,7 +66,7 @@ sec: # Run security static analysis
 .PHONY: build
 build: ## build binaries
 	$(DOCKER_CMD) go build $(GOGCFLAGS) -o "bin/machine-controller-manager" \
-               -ldflags "$(LD_FLAGS)" "$(REPO_PATH)/cmd/manager"
+               -ldflags "$(LD_FLAGS)" ./cmd/manager
 
 .PHONY: test-e2e
 test-e2e: ## Run e2e tests

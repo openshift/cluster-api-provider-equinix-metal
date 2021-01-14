@@ -21,7 +21,7 @@ type machineScopeParams struct {
 	coreClient controllerclient.Client
 	machine    *machinev1.Machine
 
-	// computeClientBuilder computeservice.BuilderFuncType
+	deviceServiceGetter DeviceServiceGetter
 }
 
 // machineScope defines a scope defined around a machine and its cluster.
@@ -43,6 +43,8 @@ type machineScope struct {
 	origProviderStatus *v1beta1.EquinixMetalMachineProviderStatus
 
 	machineToBePatched controllerclient.Patch
+
+	deviceServiceGetter DeviceServiceGetter
 }
 
 // newMachineScope creates a new MachineScope from the supplied parameters.
@@ -87,7 +89,8 @@ func newMachineScope(params machineScopeParams) (*machineScope, error) {
 		// might be invalid and result in skipping the status update.
 		origMachine: params.machine.DeepCopy(),
 		// origProviderStatus: providerStatus.DeepCopy(),
-		machineToBePatched: controllerclient.MergeFrom(params.machine.DeepCopy()),
+		machineToBePatched:  controllerclient.MergeFrom(params.machine.DeepCopy()),
+		deviceServiceGetter: params.deviceServiceGetter,
 	}, nil
 }
 

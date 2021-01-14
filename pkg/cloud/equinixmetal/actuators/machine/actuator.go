@@ -8,6 +8,7 @@ import (
 	"fmt"
 
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
+	"github.com/packethost/packngo"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/client-go/tools/record"
 	"k8s.io/klog/v2"
@@ -21,26 +22,40 @@ const (
 	updateEventAction = "Update"
 	deleteEventAction = "Delete"
 	noEventAction     = ""
+	clientName        = "OpenShift-Provider-v1beta1"
 )
+
+type DeviceServiceGetter = func(name, apiKey string) packngo.DeviceService
 
 // Actuator is responsible for performing machine reconciliation.
 type Actuator struct {
-	coreClient    controllerclient.Client
-	eventRecorder record.EventRecorder
+	coreClient          controllerclient.Client
+	eventRecorder       record.EventRecorder
+	deviceServiceGetter DeviceServiceGetter
 }
 
 // ActuatorParams holds parameter information for Actuator.
 type ActuatorParams struct {
-	CoreClient    controllerclient.Client
-	EventRecorder record.EventRecorder
+	CoreClient          controllerclient.Client
+	EventRecorder       record.EventRecorder
+	DeviceServiceGetter DeviceServiceGetter
 }
 
 // NewActuator returns an actuator.
 func NewActuator(params ActuatorParams) *Actuator {
-	return &Actuator{
-		coreClient:    params.CoreClient,
-		eventRecorder: params.EventRecorder,
+	if params.DeviceServiceGetter == nil {
+		params.DeviceServiceGetter = realDeviceClient
 	}
+
+	return &Actuator{
+		coreClient:          params.CoreClient,
+		eventRecorder:       params.EventRecorder,
+		deviceServiceGetter: params.DeviceServiceGetter,
+	}
+}
+
+func realDeviceClient(name, apiKey string) packngo.DeviceService {
+	return packngo.NewClientWithAuth(name, apiKey, nil).Devices
 }
 
 // Set corresponding event based on error. It also returns the original error

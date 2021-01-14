@@ -134,8 +134,9 @@ func main() {
 	setupLog := ctrl.Log.WithName("setup")
 
 	if err = (&machinesetcontroller.Reconciler{
-		Client: mgr.GetClient(),
-		Log:    ctrl.Log.WithName("controllers").WithName("MachineSet"),
+		Client:            mgr.GetClient(),
+		Log:               ctrl.Log.WithName("controllers").WithName("MachineSet"),
+		PlanServiceGetter: machinesetcontroller.RealPlanClient,
 	}).SetupWithManager(mgr, controller.Options{}); err != nil {
 		setupLog.Error(err, "unable to create controller", "controller", "MachineSet")
 		os.Exit(1)

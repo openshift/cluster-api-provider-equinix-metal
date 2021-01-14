@@ -16,11 +16,16 @@ package machineset
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 
+	humanize "github.com/dustin/go-humanize"
 	"github.com/go-logr/logr"
 	providerconfigv1 "github.com/openshift/cluster-api-provider-equinix-metal/pkg/apis/equinixmetal/v1beta1"
+	"github.com/openshift/cluster-api-provider-equinix-metal/pkg/cloud/equinixmetal/actuators/util"
 	machinev1 "github.com/openshift/machine-api-operator/pkg/apis/machine/v1beta1"
 	mapierrors "github.com/openshift/machine-api-operator/pkg/controller/machine"
+	"github.com/packethost/packngo"
 	corev1 "k8s.io/api/core/v1"
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -34,14 +39,22 @@ const (
 	// This exposes compute information based on the providerSpec input.
 	// This is needed by the autoscaler to foresee upcoming capacity when scaling from zero.
 	// https://github.com/openshift/enhancements/pull/186
-	cpuKey    = "machine.openshift.io/vCPU"
-	memoryKey = "machine.openshift.io/memoryMb"
+	cpuKey     = "machine.openshift.io/vCPU"
+	memoryKey  = "machine.openshift.io/memoryMb"
+	clientName = "OpenShift-Provider-v1beta1"
 )
+
+type PlanServiceGetter = func(name, apiKey string) packngo.PlanService
+
+func RealPlanClient(name, apiKey string) packngo.PlanService {
+	return packngo.NewClientWithAuth(name, apiKey, nil).Plans
+}
 
 // Reconciler reconciles machineSets.
 type Reconciler struct {
-	Client client.Client
-	Log    logr.Logger
+	Client            client.Client
+	Log               logr.Logger
+	PlanServiceGetter PlanServiceGetter
 
 	recorder record.EventRecorder
 	scheme   *runtime.Scheme
@@ -118,25 +131,50 @@ func isInvalidConfigurationError(err error) bool {
 }
 
 func (r *Reconciler) reconcile(machineSet *machinev1.MachineSet) (ctrl.Result, error) {
-	// providerConfig, err := getproviderConfig(machineSet)
-	// if err != nil {
-	// 	return ctrl.Result{}, mapierrors.InvalidMachineConfiguration("failed to get providerConfig: %v", err)
-	// }
+	providerSpec, err := getproviderConfig(machineSet)
+	if err != nil {
+		return ctrl.Result{}, mapierrors.InvalidMachineConfiguration("failed to get providerConfig: %v", err)
+	}
 
-	// machineType, err := r.cache.getMachineTypeFromCache(gceService, providerConfig.ProjectID, providerConfig.Zone, providerConfig.MachineType)
-	// if err != nil {
-	// 	return ctrl.Result{}, mapierrors.InvalidMachineConfiguration("error fetching machine type %q: %v", providerConfig.MachineType, err)
-	// }
+	apiKey, err := util.GetCredentialsSecret(r.Client, machineSet.GetNamespace(), *providerSpec)
+	if err != nil {
+		return ctrl.Result{}, err
+	}
 
+	plans, _, err := r.PlanServiceGetter(clientName, apiKey).List(&packngo.ListOptions{})
+	if err != nil {
+		return ctrl.Result{}, err
+	}
+
+	for _, plan := range plans {
+		if strings.TrimSuffix(providerSpec.MachineType, ".x86") == strings.TrimSuffix(plan.Slug, ".x86") {
+			// TODO: this currently returns physical CPUs, need to figure out how to map to core count or similar that is more useful
+			numCPUs := 0
+			for _, cpu := range plan.Specs.Cpus {
+				numCPUs += cpu.Count
+			}
+
+			n, err := humanize.ParseBytes(plan.Specs.Memory.Total)
+			if err != nil {
+				return ctrl.Result{}, err
+			}
+
+			setAnnotations(machineSet, numCPUs, n/(1000*1000))
+
+			return ctrl.Result{}, nil
+		}
+	}
+
+	return ctrl.Result{}, fmt.Errorf("plan not found")
+}
+
+func setAnnotations(machineSet *machinev1.MachineSet, numCPUs int, memory uint64) {
 	if machineSet.Annotations == nil {
 		machineSet.Annotations = make(map[string]string)
 	}
 
-	// // TODO: get annotations keys from machine API
-	// machineSet.Annotations[cpuKey] = strconv.FormatInt(machineType.GuestCpus, 10)
-	// machineSet.Annotations[memoryKey] = strconv.FormatInt(machineType.MemoryMb, 10)
-
-	return ctrl.Result{}, nil
+	machineSet.Annotations[cpuKey] = strconv.Itoa(numCPUs)
+	machineSet.Annotations[memoryKey] = strconv.FormatUint(memory, 10)
 }
 
 func getproviderConfig(machineSet *machinev1.MachineSet) (*providerconfigv1.EquinixMetalMachineProviderSpec, error) {

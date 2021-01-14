@@ -4,12 +4,13 @@ go 1.15
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
+	github.com/dustin/go-humanize v1.0.0
 	github.com/go-logr/logr v0.3.0
 	github.com/onsi/ginkgo v1.14.1
 	github.com/onsi/gomega v1.10.2
 	github.com/openshift/api v0.0.0-20201216151826-78a19e96f9eb
 	github.com/openshift/machine-api-operator v0.2.1-0.20210104142355-8e6ae0acdfcf
-	github.com/packethost/packngo v0.4.1
+	github.com/packethost/packngo v0.5.1
 
 	// kube 1.18
 	k8s.io/api v0.20.0
