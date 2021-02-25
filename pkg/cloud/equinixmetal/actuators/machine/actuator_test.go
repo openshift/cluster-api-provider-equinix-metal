@@ -16,6 +16,7 @@ import (
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/types"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/utils/pointer"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	controllerfake "sigs.k8s.io/controller-runtime/pkg/client/fake"
 	"sigs.k8s.io/controller-runtime/pkg/envtest"
@@ -26,7 +27,7 @@ var (
 	userDataSecretName    = "user-data-test"
 	credentialsSecretName = "credentials-test"
 	defaultNamespaceName  = "test"
-	credentialsSecretKey  = "EQUINIX_METAL_API_KEY"
+	credentialsSecretKey  = "api_key"
 )
 
 func init() {
@@ -36,6 +37,273 @@ func init() {
 
 type fakeDeviceService struct {
 	devices []packngo.Device
+}
+
+func copyCPR(c *packngo.CPR) *packngo.CPR {
+	if c == nil {
+		return nil
+	}
+
+	res := &packngo.CPR{}
+
+	for _, d := range c.Disks {
+		if len(d.Partitions) > 0 && d.Partitions == nil {
+			d.Partitions = nil
+		}
+
+		for _, p := range d.Partitions {
+			d.Partitions = append(d.Partitions, p)
+		}
+
+		res.Disks = append(res.Disks, d)
+	}
+	if len(c.Disks) == 0 && c.Disks != nil {
+		res.Disks = c.Disks
+	}
+
+	for _, r := range c.Raid {
+		if len(r.Devices) > 0 || r.Devices == nil {
+			r.Devices = nil
+		}
+
+		for _, d := range r.Devices {
+			r.Devices = append(r.Devices, d)
+		}
+		res.Raid = append(res.Raid, r)
+	}
+	if len(c.Raid) == 0 && c.Raid != nil {
+		res.Raid = c.Raid
+	}
+
+	for _, f := range c.Filesystems {
+		if len(f.Mount.Create.Options) > 0 || f.Mount.Create.Options == nil {
+			f.Mount.Create.Options = nil
+		}
+
+		for _, o := range f.Mount.Create.Options {
+			f.Mount.Create.Options = append(f.Mount.Create.Options, o)
+		}
+
+		res.Filesystems = append(res.Filesystems, f)
+	}
+	if len(c.Filesystems) == 0 && c.Filesystems != nil {
+		res.Filesystems = c.Filesystems
+	}
+
+	return res
+}
+
+func copyFacility(f *packngo.Facility) *packngo.Facility {
+	if f == nil {
+		return nil
+	}
+
+	res := &packngo.Facility{
+		ID:   f.ID,
+		Name: f.Name,
+		Code: f.Code,
+		URL:  f.URL,
+	}
+
+	if f.Features != nil {
+		for _, feat := range f.Features {
+			res.Features = append(res.Features, feat)
+		}
+	}
+
+	if f.Address != nil {
+		newAddress := *f.Address
+		res.Address = &newAddress
+	}
+
+	return res
+}
+
+func copyProject(p *packngo.Project) *packngo.Project {
+	if p == nil {
+		return nil
+	}
+
+	res := &packngo.Project{
+		ID:              p.ID,
+		Name:            p.Name,
+		Created:         p.Created,
+		Updated:         p.Updated,
+		URL:             p.URL,
+		BackendTransfer: p.BackendTransfer,
+		Organization:    TODO,
+		Users:           TODO,
+		Devices:         TODO,
+		SSHKeys:         copySSHKeys(p.SSHKeys),
+		PaymentMethod:   TODO,
+	}
+
+	return res
+}
+
+func copyPlan(p *packngo.Plan) *packngo.Plan {
+	if p == nil {
+		return nil
+	}
+
+	var deploymentTypes []string
+	if p.DeploymentTypes != nil {
+		for _, d := range p.DeploymentTypes {
+			deploymentTypes = append(deploymentTypes, d)
+		}
+	}
+
+	var availableIn []packngo.Facility
+	if p.AvailableIn != nil {
+		for i := range p.AvailableIn {
+			availableIn = append(availableIn, *copyFacility(&p.AvailableIn[i]))
+		}
+	}
+
+	var pricing *packngo.Pricing
+	if p.Pricing != nil {
+		newPricing := *p.Pricing
+		pricing = &newPricing
+	}
+
+	var specs *packngo.Specs
+	if p.Specs != nil {
+		specs := &packngo.Specs{}
+
+		if p.Specs.Cpus != nil {
+			for i := range p.Specs.Cpus {
+				c := *p.Specs.Cpus[i]
+				specs.Cpus = append(specs.Cpus, &c)
+			}
+		}
+
+		if p.Specs.Memory != nil {
+			newMemory := *p.Specs.Memory
+			p.Specs.Memory = &newMemory
+		}
+
+		if p.Specs.Drives != nil {
+			for i := range p.Specs.Drives {
+				d := *p.Specs.Drives[i]
+				specs.Drives = append(specs.Drives, &d)
+			}
+		}
+
+		if p.Specs.Nics != nil {
+			for i := range p.Specs.Nics {
+				n := *p.Specs.Nics[i]
+				specs.Nics = append(specs.Nics, &n)
+			}
+		}
+
+		if p.Specs.Features != nil {
+			newFeatures := *p.Specs.Features
+			p.Specs.Features = &newFeatures
+		}
+
+	}
+
+	res := &packngo.Plan{
+		ID:              p.ID,
+		Slug:            p.Slug,
+		Name:            p.Name,
+		Description:     p.Description,
+		Line:            p.Line,
+		Class:           p.Class,
+		Specs:           specs,
+		Pricing:         pricing,
+		DeploymentTypes: deploymentTypes,
+		AvailableIn:     availableIn,
+	}
+
+	return res
+}
+
+func copySSHKeys(sshKeys []packngo.SSHKey) []packngo.SSHKey {
+	if sshKeys == nil {
+		return nil
+	}
+
+	res := make([]packngo.SSHKey, 0, len(sshKeys))
+	for _, s := range sshKeys {
+		res = append(res, s)
+	}
+
+	return res
+}
+
+func copyDevice(d *packngo.Device) *packngo.Device {
+	if d == nil {
+		return nil
+	}
+
+	var desc *string
+	if d.Description != nil {
+		desc = pointer.StringPtr(*d.Description)
+	}
+
+	var tags []string
+	if d.Tags != nil {
+		tags = make([]string, 0, len(d.Tags))
+		for _, t := range d.Tags {
+			tags = append(tags, t)
+		}
+	}
+
+	var os *packngo.OS
+	if d.OS != nil {
+		var provisionableOn []string
+		if d.OS.ProvisionableOn != nil {
+			provisionableOn = make([]string, 0, len(d.OS.ProvisionableOn))
+			for _, p := range d.OS.ProvisionableOn {
+				provisionableOn = append(provisionableOn, p)
+			}
+		}
+		os = &packngo.OS{
+			Name:            d.OS.Name,
+			Slug:            d.OS.Slug,
+			Distro:          d.OS.Distro,
+			ProvisionableOn: provisionableOn,
+		}
+	}
+
+	res := &packngo.Device{
+		ID:                  d.ID,
+		Href:                d.Href,
+		Hostname:            d.Hostname,
+		Description:         desc,
+		State:               d.State,
+		Created:             d.Created,
+		Updated:             d.Updated,
+		Locked:              d.Locked,
+		BillingCycle:        d.BillingCycle,
+		ProvisionPer:        d.ProvisionPer,
+		UserData:            d.UserData,
+		User:                d.User,
+		RootPassword:        d.RootPassword,
+		IPXEScriptURL:       d.IPXEScriptURL,
+		AlwaysPXE:           d.AlwaysPXE,
+		HardwareReservation: d.HardwareReservation,
+		SpotInstance:        d.SpotInstance,
+		SpotPriceMax:        d.SpotPriceMax,
+		ShortID:             d.ShortID,
+		SwitchUUID:          d.SwitchUUID,
+		SSHKeys:             copySSHKeys(d.SSHKeys),
+		Tags:                tags,
+		OS:                  os,
+		Storage:             copyCPR(d.Storage),
+		Network:             TODO,
+		Volumes:             TODO,
+		Plan:                copyPlan(d.Plan),
+		Facility:            copyFacility(d.Facility),
+		Project:             copyProject(d.Project),
+		ProvisionEvents:     TODO,
+		TerminationTime:     TODO,
+		NetworkPorts:        TODO,
+		CustomData:          TODO,
+	}
+
+	return res
 }
 
 func (f *fakeDeviceService) getter() DeviceServiceGetter {
@@ -49,12 +317,22 @@ func (f *fakeDeviceService) List(projectId string, opts *packngo.ListOptions) ([
 }
 
 func (f *fakeDeviceService) Create(*packngo.DeviceCreateRequest) (*packngo.Device, *packngo.Response, error) {
+	for i, d := range f.devices {
+
+	}
 	return nil, nil, fmt.Errorf("Not implemented yet")
 }
 
 func (f *fakeDeviceService) Get(id string, opts *packngo.GetOptions) (*packngo.Device, *packngo.Response, error) {
-	for _, d := range f.devices {
+	for i, _ := range f.devices {
+		d := f.devices[i]
 		if d.ID == id {
+			res := &packngo.Device{
+				ID:          d.id,
+				Href:        d.Href,
+				Hostname:    d.Hostname,
+				Description: pointer.StringPtr(pointer.StringPtrDerefOr(d.Description, "")),
+			}
 			return &d, nil, nil
 		}
 	}

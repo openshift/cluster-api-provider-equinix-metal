@@ -25,11 +25,11 @@ import (
 )
 
 const (
-	credentialsSecretKey = "EQUINIX_METAL_API_KEY"
+	credentialsSecretKey = "api_key"
 )
 
 // This expects the https://github.com/openshift/cloud-credential-operator to make a secret
-// with a serviceAccount JSON Key content available. E.g:
+// with a api_key Key content available. E.g:
 //
 //apiVersion: v1
 //kind: Secret
@@ -38,7 +38,7 @@ const (
 //  namespace: openshift-machine-api
 //type: Opaque
 //data:
-//  EQUINIX_METAL_API_KEY: <Your Equinix Metal API Key>
+//  api_key: <Your Equinix Metal API Key>
 func GetCredentialsSecret(coreClient controllerclient.Client, namespace string, spec v1beta1.EquinixMetalMachineProviderSpec) (string, error) {
 	if spec.CredentialsSecret == nil {
 		return "", nil

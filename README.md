@@ -31,7 +31,7 @@ kind create cluster
 kustomize build config | kubectl apply -f -
 
 # Create the referenced credentials secret
-kubectl create secret generic equinixmetal-credentials-secret --from-literal=EQUINIX_METAL_API_KEY=${EQUINIX_METAL_API_KEY}
+kubectl create secret generic equinixmetal-credentials-secret --from-literal=api_key=${EQUINIX_METAL_API_KEY}
 
 # Create the referenced user data secret
 kubectl create secret generic worker-user-data-secret --from-file=userData=./example.ign
