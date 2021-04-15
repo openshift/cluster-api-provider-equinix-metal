@@ -49,7 +49,6 @@ func (r *Reconciler) create() error {
 
 	req := &packngo.DeviceCreateRequest{
 		Hostname:      r.machine.Name,
-		Facility:      []string{r.providerSpec.Facility},
 		ProjectID:     r.providerSpec.ProjectID,
 		UserData:      userData,
 		IPXEScriptURL: r.providerSpec.IPXEScriptURL,
@@ -58,6 +57,12 @@ func (r *Reconciler) create() error {
 		OS:            r.providerSpec.OS,
 		BillingCycle:  r.providerSpec.BillingCycle,
 		Tags:          r.providerSpec.Tags,
+	}
+
+	if r.providerSpec.Metro != "" {
+		req.Metro = r.providerSpec.Metro
+	} else if r.providerSpec.Facility != "" {
+		req.Facility = []string{r.providerSpec.Facility}
 	}
 
 	deviceService := r.deviceServiceGetter(clientName, r.apiKey)

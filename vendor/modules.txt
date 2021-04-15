@@ -79,10 +79,6 @@ github.com/googleapis/gnostic/openapiv2
 # github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7
 github.com/gregjones/httpcache
 github.com/gregjones/httpcache/diskcache
-# github.com/hashicorp/go-cleanhttp v0.5.1
-github.com/hashicorp/go-cleanhttp
-# github.com/hashicorp/go-retryablehttp v0.6.6
-github.com/hashicorp/go-retryablehttp
 # github.com/hashicorp/golang-lru v0.5.4
 github.com/hashicorp/golang-lru
 github.com/hashicorp/golang-lru/simplelru
@@ -180,7 +176,7 @@ github.com/openshift/machine-api-operator/pkg/generated/informers/externalversio
 github.com/openshift/machine-api-operator/pkg/generated/listers/machine/v1beta1
 github.com/openshift/machine-api-operator/pkg/metrics
 github.com/openshift/machine-api-operator/pkg/util
-# github.com/packethost/packngo v0.5.1
+# github.com/packethost/packngo v0.13.0
 ## explicit
 github.com/packethost/packngo
 # github.com/peterbourgon/diskv v2.0.1+incompatible
@@ -556,6 +552,7 @@ k8s.io/kubectl/pkg/util/templates
 k8s.io/kubectl/pkg/util/term
 k8s.io/kubectl/pkg/validation
 # k8s.io/utils v0.0.0-20201110183641-67b214c5f920
+## explicit
 k8s.io/utils/buffer
 k8s.io/utils/exec
 k8s.io/utils/integer

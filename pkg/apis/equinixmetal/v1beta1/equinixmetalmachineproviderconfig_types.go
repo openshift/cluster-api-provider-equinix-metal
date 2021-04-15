@@ -22,7 +22,8 @@ type EquinixMetalMachineProviderSpec struct {
 	CredentialsSecret *corev1.LocalObjectReference `json:"credentialsSecret,omitempty"`
 
 	MachineType   string   `json:"machineType"`
-	Facility      string   `json:"facility"`
+	Metro         string   `json:"metro,omitempty"`
+	Facility      string   `json:"facility,omitempty"`
 	ProjectID     string   `json:"projectID,omitempty"`
 	BillingCycle  string   `json:"billingCycle"`
 	OS            string   `json:"os"`
