@@ -1,0 +1,29 @@
+---
+apiVersion: machine.openshift.io/v1beta1
+kind: Machine
+metadata:
+  name: worker-machine
+  namespace: default
+  labels:
+    machine.openshift.io/cluster-api-machineset: worker-machine
+    machine.openshift.io/cluster-api-cluster: equinixmetal-actuator-k8s
+spec:
+  providerSpec:
+    value:
+      apiVersion: equinixmetal.machine.openshift.io/v1beta1
+      kind: EquinixMetalMachineProviderConfig
+      machineType: t1.small.x86
+      facility: ewr1
+      projectID: ${EQUINIX_METAL_PROJECT_ID}
+      userDataSecret:
+        name: worker-user-data-secret
+      credentialsSecret:
+        name: equinixmetal-credentials-secret
+      os: custom_ipxe
+      ipxeScriptURL: https://gist.github.com/detiber/c0439f2b8fcc644d680a55078c8b5710/raw/9a791731cc5c62ff514a94a97e0de883a464dfec/rhcos.ipxe
+      billingCycle: hourly
+      tags:
+      - rhcos
+      - ipxe
+      - testing
+      - openshift-ipi
